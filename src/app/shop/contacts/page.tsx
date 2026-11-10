@@ -123,7 +123,6 @@ export default function ContactsPage() {
 
               <div className="p-8 space-y-8">
                 
-                {/* Блок 1: Организация */}
                 <div>
                   <h3 className="flex items-center gap-2 text-lg font-bold mb-4 text-[#5FC36C]">
                     <Building2 className="w-5 h-5" />
@@ -159,7 +158,6 @@ export default function ContactsPage() {
 
                 <hr className="border-gray-100" />
 
-                {/* Блок 2: Банк */}
                 <div>
                   <h3 className="flex items-center gap-2 text-lg font-bold mb-4 text-[#5FC36C]">
                     <CreditCard className="w-5 h-5" />

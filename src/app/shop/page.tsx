@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Toast from '../../components/Toast';
 import ShopHeader from '../../components/ShopHeader';
 import CustomSelect from '../../components/CustomSelect';
+import Onboarding from '../../components/Onboarding';
 import { Heart, ShoppingCart, Search, Filter } from 'lucide-react';
 
 export default function Shop() {
@@ -27,12 +28,18 @@ export default function Shop() {
   const [cart, setCart] = useState<{ [key: string]: number }>({});
   const [favorites, setFavorites] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+  
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     const savedCart = localStorage.getItem('pyro_cart');
     if (savedCart) setCart(JSON.parse(savedCart));
     const savedFav = localStorage.getItem('pyro_favorites');
     if (savedFav) setFavorites(JSON.parse(savedFav));
+    
+    // Проверяем, проходил ли онбординг
+    const onboardingDone = localStorage.getItem('pyro_onboarding');
+    if (!onboardingDone) setShowOnboarding(true);
   }, []);
 
   useEffect(() => {
@@ -110,6 +117,20 @@ export default function Shop() {
     <div className="min-h-screen bg-[#F9FAFB] text-[#1A1A1A] font-sans pb-20">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
+      {showOnboarding && (
+        <Onboarding 
+          onComplete={() => {
+            localStorage.setItem('pyro_onboarding', 'true');
+            setShowOnboarding(false);
+          }}
+          onGoToSettings={() => {
+            localStorage.setItem('pyro_onboarding', 'true');
+            setShowOnboarding(false);
+            router.push('/shop/settings');
+          }}
+        />
+      )}
+
       <ShopHeader 
         cartCount={Object.values(cart).reduce((a, b) => a + b, 0)} 
         favoritesCount={favorites.length} 
@@ -125,7 +146,6 @@ export default function Shop() {
 
       <div className="max-w-[1440px] mx-auto px-8 pt-8 flex flex-col lg:flex-row gap-10">
         
-        {/* ЛЕВАЯ ПАНЕЛЬ: ФИЛЬТРЫ */}
         <aside className="w-full lg:w-72 flex-shrink-0 relative z-10">
           <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm sticky top-24">
             <div className="flex items-center gap-2 mb-6">
@@ -164,10 +184,7 @@ export default function Shop() {
           </div>
         </aside>
 
-        {/* ПРАВАЯ ЧАСТЬ: ТОВАРЫ */}
         <main className="flex-grow">
-          
-          {/* Баннер акции */}
           {activePromo && (
             <div className="bg-gradient-to-r from-[#5FC36C] to-[#4CAF50] rounded-[2rem] p-8 flex items-center justify-between mb-8 shadow-lg shadow-green-500/20 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110"></div>
@@ -188,13 +205,11 @@ export default function Shop() {
             </div>
           )}
 
-          {/* Заголовок и кол-во товаров */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-black">Каталог товаров</h2>
             <span className="text-sm font-bold text-gray-500">Найдено: {filteredProducts.length}</span>
           </div>
 
-          {/* Сетка товаров */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product) => {
               const inCartQty = cart[product.id] || 0;
@@ -204,7 +219,6 @@ export default function Shop() {
               return (
                 <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col bg-white rounded-[2rem] border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 relative">
                   
-                  {/* Фото */}
                   <div className="relative aspect-[3/4] bg-gray-50 overflow-hidden">
                     {product.image_url ? (
                       <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -212,14 +226,12 @@ export default function Shop() {
                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium">Нет фото</div>
                     )}
                     
-                    {/* Бейдж скидки */}
                     {hasDiscount && (
                       <div className="absolute top-4 left-4 bg-[#F51167] text-white text-xs font-black px-3 py-1 rounded-lg shadow-md">
                         Скидка
                       </div>
                     )}
 
-                    {/* Кнопка избранного */}
                     <button 
                       onClick={(e) => toggleFavorite(e, product.id)} 
                       className={`absolute top-4 right-4 z-10 p-2.5 rounded-full bg-white/90 backdrop-blur-sm shadow-sm transition-all hover:scale-110 ${isFav ? 'text-[#5FC36C]' : 'text-gray-400 hover:text-[#5FC36C]'}`}
@@ -228,7 +240,6 @@ export default function Shop() {
                     </button>
                   </div>
 
-                  {/* Информация */}
                   <div className="p-5 flex flex-col flex-grow">
                     <div className="mb-2">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{product.brand || 'Бренд'}</span>
@@ -268,7 +279,6 @@ export default function Shop() {
             })}
           </div>
           
-          {/* Пустое состояние */}
           {filteredProducts.length === 0 && (
             <div className="bg-white rounded-[2rem] p-16 text-center border border-gray-100 mt-6 shadow-sm flex flex-col items-center justify-center">
               <Search className="w-12 h-12 text-gray-300 mb-4" />

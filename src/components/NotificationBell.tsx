@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Settings, Eye, ChevronDown } from 'lucide-react';
+import { Bell, Check, Settings, Eye } from 'lucide-react';
 import { supabase } from '../app/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -49,7 +49,6 @@ export default function NotificationBell() {
         </div>
         <span className="text-xs font-bold text-gray-600 group-hover:text-[#5FC36C] transition-colors whitespace-nowrap flex items-center gap-1">
           Уведомления
-          <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
@@ -60,13 +59,19 @@ export default function NotificationBell() {
               <h3 className="font-black text-lg">Уведомления</h3>
               <div className="flex gap-2">
                 <button onClick={markAllAsRead} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-[#5FC36C]" title="Прочитать все"><Check className="w-5 h-5" /></button>
-                <button onClick={() => router.push('/shop/settings')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-black" title="Настройки"><Settings className="w-5 h-5" /></button>
+                
+                {/* ИСПРАВЛЕННАЯ ССЫЛКА НА НАСТРОЙКИ */}
+                <button onClick={() => router.push('/shop/settings?tab=notifications')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-black" title="Настройки уведомлений">
+                  <Settings className="w-5 h-5" />
+                </button>
               </div>
             </div>
+            
             <div className="flex px-4 border-b border-gray-100">
               <button onClick={() => setActiveTab('new')} className={`pb-3 pt-2 px-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'new' ? 'border-[#5FC36C] text-[#5FC36C]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>Новые {unreadCount > 0 && `(${unreadCount})`}</button>
               <button onClick={() => setActiveTab('read')} className={`pb-3 pt-2 px-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'read' ? 'border-[#5FC36C] text-[#5FC36C]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>Прочитанные</button>
             </div>
+            
             <div className="overflow-y-auto flex-grow p-2">
               {currentList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center px-4">
