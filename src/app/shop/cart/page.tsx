@@ -7,13 +7,15 @@ import Toast from '../../../components/Toast';
 import ShopHeader from '../../../components/ShopHeader';
 import InvoiceTemplate from '../../../components/InvoiceTemplate';
 import { numberToWords } from '../../../utils/generateInvoice';
-import { Trash2, MapPin, Truck, Package, Clock, CheckCircle, AlertTriangle, ShoppingCart, FileWarning } from 'lucide-react';
+import { loadCartFromDB, saveCartToDB } from '../../../utils/cartHelpers';
+import { Trash2, MapPin, Truck, Package, Clock, CheckCircle, AlertTriangle, ShoppingCart, FileWarning, CreditCard, Lock, Info, Calculator } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CartPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
   
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [cart, setCart] = useState<{ [key: string]: number }>({});
@@ -26,6 +28,12 @@ export default function CartPage() {
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
   const [address, setAddress] = useState('');
   
+  // Стейты для формы карты
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardName, setCardName] = useState('');
+  
   const [isCheckout, setIsCheckout] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
@@ -37,21 +45,25 @@ export default function CartPage() {
   
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // Демо-стоимость доставки
+  const [deliveryCost, setDeliveryCost] = useState(0);
+
   useEffect(() => {
     let isMounted = true;
-
-    const savedCart = localStorage.getItem('pyro_cart');
-    if (savedCart) {
-      const parsedCart = JSON.parse(savedCart);
-      setCart(parsedCart);
-      setSelectedItems(Object.keys(parsedCart));
-    }
 
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!isMounted) return;
       if (!session) { router.push('/'); return; }
+      
+      setUserId(session.user.id);
       setIsAuthorized(true);
+
+      const dbCart = await loadCartFromDB(session.user.id);
+      if (isMounted) {
+        setCart(dbCart);
+        setSelectedItems(Object.keys(dbCart));
+      }
 
       const [clientRes, adminRes] = await Promise.all([
         supabase.from('organizations').select('*').eq('user_id', session.user.id).limit(1),
@@ -62,13 +74,12 @@ export default function CartPage() {
         const org = clientRes.data[0];
         setClientOrg(org);
         setAddress(org.address || '');
-        
         setIsContractSigned(org.contract_signed || false);
         setIsRequisitesFilled(!!(org.name && org.inn && org.contact_phone));
       }
       if (adminRes.data && isMounted) setAdminOrg(adminRes.data);
 
-      const cartIds = savedCart ? Object.keys(JSON.parse(savedCart)) : [];
+      const cartIds = Object.keys(dbCart);
       if (cartIds.length > 0) {
         const { data: productsData } = await supabase.from('products').select('*').in('id', cartIds);
         if (productsData && isMounted) setAllProducts(productsData);
@@ -81,13 +92,20 @@ export default function CartPage() {
     return () => { isMounted = false; };
   }, [router]);
 
+  // Логика расчета стоимости доставки (демо)
+  useEffect(() => {
+    if (deliveryMethod === 'yandex') setDeliveryCost(500);
+    else if (deliveryMethod === 'dostavista') setDeliveryCost(450);
+    else setDeliveryCost(0);
+  }, [deliveryMethod]);
+
   useEffect(() => {
     if (paymentMethod === 'Наличные' && (deliveryMethod === 'yandex' || deliveryMethod === 'dostavista')) setDeliveryMethod('pickup');
   }, [paymentMethod, deliveryMethod]);
 
-  const updateCart = (newCart: { [key: string]: number }) => {
+  const updateCart = async (newCart: { [key: string]: number }) => {
     setCart(newCart);
-    localStorage.setItem('pyro_cart', JSON.stringify(newCart));
+    if (userId) await saveCartToDB(userId, newCart);
   };
 
   const handleToggleAll = () => {
@@ -95,20 +113,20 @@ export default function CartPage() {
     else setSelectedItems(Object.keys(cart));
   };
 
-  const handleQuantityChange = (id: string, delta: number) => {
+  const handleQuantityChange = async (id: string, delta: number) => {
     const newQty = (cart[id] || 0) + delta;
     if (newQty <= 0) {
       const { [id]: _, ...rest } = cart;
-      updateCart(rest);
+      await updateCart(rest);
       setSelectedItems(prev => prev.filter(item => item !== id));
     } else {
-      updateCart({ ...cart, [id]: newQty });
+      await updateCart({ ...cart, [id]: newQty });
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const { [id]: _, ...rest } = cart;
-    updateCart(rest);
+    await updateCart(rest);
     setSelectedItems(prev => prev.filter(item => item !== id));
   };
 
@@ -117,6 +135,7 @@ export default function CartPage() {
     return total + (product ? product.price * (cart[id] || 0) : 0);
   }, 0);
 
+  const finalTotal = selectedTotal + deliveryCost;
   const selectedCount = selectedItems.reduce((count, id) => count + (cart[id] || 0), 0);
   const isThirdPartyDelivery = deliveryMethod === 'yandex' || deliveryMethod === 'dostavista';
 
@@ -129,16 +148,38 @@ export default function CartPage() {
       setToast({ message: 'Для оформления заказа необходимо подписать договор поставки', type: 'error' });
       return;
     }
-    if (!clientOrg || !clientOrg.contact_phone) {
-      setToast({ message: 'Заполните контактный телефон', type: 'error' });
+    if (paymentMethod === 'Карта' && (!cardNumber || !cardExpiry || !cardCvc || !cardName)) {
+      setToast({ message: 'Заполните все данные банковской карты', type: 'error' });
       return;
+    }
+    if (isThirdPartyDelivery && !address) {
+      setToast({ message: 'Для сторонней доставки укажите адрес', type: 'error' });
+      return;
+    }
+
+    let paymentStatus = 'Ожидает оплаты';
+    let deliveryStatus = 'На сборке';
+
+    if (paymentMethod === 'Счет') {
+      paymentStatus = 'Ожидает оплаты';
+      deliveryStatus = 'Ожидает оплаты';
+    } else if (paymentMethod === 'Карта') {
+      paymentStatus = 'Ожидает подтверждения';
+      deliveryStatus = 'На сборке';
+    } else if (paymentMethod === 'Наличные') {
+      paymentStatus = 'Оплата при получении';
+      deliveryStatus = 'На сборке';
     }
 
     const invoiceNumber = `СЧ-${Math.floor(Math.random() * 10000) + 1000}`;
     const { data: orderData, error } = await supabase.from('orders').insert([{
-      customer_name: clientOrg.name, customer_phone: clientOrg.contact_phone, total_price: selectedTotal,
-      payment_method: paymentMethod, delivery_method: deliveryMethod, delivery_address: address,
-      delivery_status: paymentMethod === 'Счет' ? 'Ожидает оплаты' : 'На сборке'
+      customer_name: clientOrg.name, customer_phone: clientOrg.contact_phone, 
+      total_price: finalTotal,
+      payment_method: paymentMethod, 
+      delivery_method: deliveryMethod, 
+      delivery_address: address,
+      delivery_status: deliveryStatus,
+      payment_status: paymentStatus
     }]).select().single();
 
     if (error || !orderData) { setToast({ message: 'Ошибка: ' + error?.message, type: 'error' }); return; }
@@ -151,18 +192,46 @@ export default function CartPage() {
     if (paymentMethod === 'Счет') {
       await supabase.from('invoices').insert([{
         user_id: clientOrg.user_id, order_id: orderData.id, invoice_number: invoiceNumber,
-        amount: selectedTotal, status: 'Ожидает оплаты', admin_org_id: adminOrg?.id || null
+        amount: finalTotal, status: 'Ожидает оплаты', admin_org_id: adminOrg?.id || null
       }]);
       setInvoiceData({
         invoiceNumber, date: new Date().toLocaleDateString('ru-RU'), adminOrg, clientOrg,
-        items: selectedItems.map(id => ({ name: allProducts.find(p => p.id === id)?.name, quantity: cart[id], price: allProducts.find(p => p.id === id)?.price })),
-        total: selectedTotal, totalWords: numberToWords(selectedTotal)
+        items: [
+          ...selectedItems.map(id => ({ name: allProducts.find(p => p.id === id)?.name, quantity: cart[id], price: allProducts.find(p => p.id === id)?.price })),
+          ...(deliveryCost > 0 ? [{ name: `Доставка (${deliveryMethod === 'yandex' ? 'Яндекс' : 'Достависта'})`, quantity: 1, price: deliveryCost }] : [])
+        ],
+        total: finalTotal, totalWords: numberToWords(finalTotal)
       });
       setIsCheckout(false); setShowInvoiceModal(true); setSuccessDeliveryMethod(deliveryMethod);
     } else {
       setSuccessDeliveryMethod(deliveryMethod); setOrderSuccess(true); setIsCheckout(false);
     }
-    updateCart({}); setSelectedItems([]);
+    
+    await updateCart({}); 
+    setSelectedItems([]);
+  };
+
+  // --- МАСКИ ДЛЯ КАРТЫ ---
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+    const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
+    setCardNumber(formatted);
+  };
+
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+    const formatted = raw.replace(/(\d{2})(?=\d)/, '$1/');
+    setCardExpiry(formatted);
+  };
+
+  const handleCvcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 3);
+    setCardCvc(raw);
+  };
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase();
+    setCardName(raw);
   };
 
   if (!isAuthorized) return <div className="min-h-screen bg-[#F9FAFB]"></div>;
@@ -181,7 +250,11 @@ export default function CartPage() {
           <div className="bg-white p-10 rounded-[2rem] shadow-sm border border-gray-100 max-w-md w-full text-center">
             <div className="w-20 h-20 bg-[#5FC36C] rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-white" /></div>
             <h1 className="text-3xl font-black mb-4">Заказ оформлен!</h1>
-            <p className="text-gray-600 font-medium mb-8">Мы свяжемся с вами для подтверждения.</p>
+            <p className="text-gray-600 font-medium mb-8">
+              {paymentMethod === 'Карта' 
+                ? 'Демо-оплата прошла успешно. Ожидайте подтверждения менеджера.' 
+                : 'Мы свяжемся с вами для подтверждения.'}
+            </p>
             <button onClick={() => router.push('/shop/orders')} className="w-full bg-[#5FC36C] text-white py-4 rounded-xl font-black hover:bg-[#4CAF50]">Перейти в заказы</button>
           </div>
         </div>
@@ -202,9 +275,7 @@ export default function CartPage() {
             <FileWarning className="w-8 h-8 text-red-500 shrink-0" />
             <div>
               <h3 className="text-lg font-black text-red-700 mb-2">Внимание!</h3>
-              <p className="text-red-600 font-medium mb-4">
-                Чтобы оформить заказ, вам нужно:
-              </p>
+              <p className="text-red-600 font-medium mb-4">Чтобы оформить заказ, вам нужно:</p>
               <ul className="list-disc pl-5 text-red-600 font-bold mb-4 space-y-1">
                 {!isRequisitesFilled && <li>Заполнить реквизиты в <Link href="/shop/settings" className="underline hover:text-red-800">Настройках профиля</Link>.</li>}
                 {!isContractSigned && <li>Подписать <Link href="/shop/contract" className="underline hover:text-red-800">договор поставки</Link>.</li>}
@@ -231,9 +302,7 @@ export default function CartPage() {
                   {item.image_url ? (
                     <img src={item.image_url} alt={item.name} className="w-24 h-32 object-cover rounded-xl border border-gray-100" />
                   ) : (
-                    <div className="w-24 h-32 bg-gray-100 rounded-xl border border-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold text-center p-2">
-                      Нет фото
-                    </div>
+                    <div className="w-24 h-32 bg-gray-100 rounded-xl border border-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold text-center p-2">Нет фото</div>
                   )}
 
                   <div className="flex-grow">
@@ -295,6 +364,64 @@ export default function CartPage() {
                   </div>
                 </div>
 
+                {paymentMethod === 'Карта' && (
+                  <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-gray-700 font-bold">
+                        <CreditCard className="w-5 h-5 text-[#5FC36C]" /> Данные карты
+                      </div>
+                      <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-2 py-1 rounded">Демо-режим</span>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <input 
+                          type="text" 
+                          value={cardNumber} 
+                          onChange={handleCardNumberChange} 
+                          placeholder="0000 0000 0000 0000"
+                          maxLength={19}
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none tracking-widest"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <input 
+                            type="text" 
+                            value={cardExpiry} 
+                            onChange={handleExpiryChange} 
+                            placeholder="ММ/ГГ"
+                            maxLength={5}
+                            className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <input 
+                            type="password"
+                            value={cardCvc} 
+                            onChange={handleCvcChange} 
+                            placeholder="CVC"
+                            maxLength={3}
+                            className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <input 
+                          type="text" 
+                          value={cardName} 
+                          onChange={handleNameChange} 
+                          placeholder="IVAN IVANOV"
+                          className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-3 text-xs text-gray-500 font-medium">
+                      <Lock className="w-3 h-3" /> Безопасная оплата (демо)
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-6">
                   <h3 className="font-bold mb-3">Доставка</h3>
                   <div className="space-y-2">
@@ -312,11 +439,44 @@ export default function CartPage() {
                   </div>
                 </div>
 
+                {isThirdPartyDelivery && (
+                  <div className="bg-[#F4F9F4] p-5 rounded-2xl border border-[#E3F2E3] mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calculator className="w-5 h-5 text-[#5FC36C]" />
+                      <span className="font-bold text-gray-900">Расчет доставки</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-medium text-gray-600 mb-2">
+                      <span>Служба доставки:</span>
+                      <span className="font-bold">{deliveryMethod === 'yandex' ? 'Яндекс Доставка' : 'Достависта'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-medium text-gray-600 mb-2">
+                      <span>Стоимость:</span>
+                      <span className="font-black text-lg text-gray-900">{deliveryCost} ₽</span>
+                    </div>
+                    <div className="flex items-start gap-2 mt-3 text-xs text-gray-500 font-medium">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>Оплачивается отдельно водителю при получении (или курьеру). Стоимость указана демонстративно.</span>
+                    </div>
+                  </div>
+                )}
+
                 {isThirdPartyDelivery && <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 flex items-start gap-2"><AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0" /><p className="text-xs text-yellow-800 font-medium">Доставка сторонними сервисами оплачивается за счет Покупателя. Стоимость будет согласована после оформления.</p></div>}
 
-                <div className="border-t border-gray-100 pt-6 flex justify-between items-center mb-6">
-                  <span className="text-lg font-bold">Итого</span>
-                  <span className="text-3xl font-black">{selectedTotal} ₽</span>
+                <div className="border-t border-gray-100 pt-6 space-y-3 mb-6">
+                  <div className="flex justify-between text-gray-600 font-medium">
+                    <span>Товары:</span>
+                    <span>{selectedTotal} ₽</span>
+                  </div>
+                  {deliveryCost > 0 && (
+                    <div className="flex justify-between text-gray-600 font-medium">
+                      <span>Доставка:</span>
+                      <span>{deliveryCost} ₽</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-dashed border-gray-200">
+                    <span className="text-lg font-bold">Итого к оплате</span>
+                    <span className="text-3xl font-black">{finalTotal} ₽</span>
+                  </div>
                 </div>
 
                 <button 

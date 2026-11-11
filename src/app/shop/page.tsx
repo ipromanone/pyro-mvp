@@ -8,12 +8,14 @@ import Toast from '../../components/Toast';
 import ShopHeader from '../../components/ShopHeader';
 import CustomSelect from '../../components/CustomSelect';
 import Onboarding from '../../components/Onboarding';
+import { loadCartFromDB, loadFavoritesFromDB, saveCartToDB, toggleFavoriteInDB } from '../../utils/cartHelpers';
 import { Heart, ShoppingCart, Search, Filter } from 'lucide-react';
 
 export default function Shop() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
   
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [clientOrg, setClientOrg] = useState<any>(null);
@@ -21,7 +23,6 @@ export default function Shop() {
   
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterPriceMax, setFilterPriceMax] = useState<string>('');
-  
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -32,67 +33,72 @@ export default function Shop() {
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    const savedCart = localStorage.getItem('pyro_cart');
-    if (savedCart) setCart(JSON.parse(savedCart));
-    const savedFav = localStorage.getItem('pyro_favorites');
-    if (savedFav) setFavorites(JSON.parse(savedFav));
-    
-    // Проверяем, проходил ли онбординг
     const onboardingDone = localStorage.getItem('pyro_onboarding');
     if (!onboardingDone) setShowOnboarding(true);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('pyro_cart', JSON.stringify(cart));
-    localStorage.setItem('pyro_favorites', JSON.stringify(favorites));
-  }, [cart, favorites]);
 
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push('/'); return; }
       
+      setUserId(session.user.id);
       setIsAuthorized(true);
 
-      const [clientRes, productsRes, promoRes] = await Promise.all([
+      // Параллельно загружаем всё
+      const [clientRes, productsRes, promoRes, cartRes, favRes] = await Promise.all([
         supabase.from('organizations').select('*').eq('user_id', session.user.id).limit(1),
         supabase.from('products').select('*'),
-        supabase.from('promotions').select('*').eq('is_active', true).limit(1)
+        supabase.from('promotions').select('*').eq('is_active', true).limit(1),
+        loadCartFromDB(session.user.id),
+        loadFavoritesFromDB(session.user.id)
       ]);
 
       if (clientRes.data && clientRes.data.length > 0) setClientOrg(clientRes.data[0]);
       if (productsRes.data) setAllProducts(productsRes.data);
       if (promoRes.data && promoRes.data.length > 0) setActivePromo(promoRes.data[0]);
       
+      setCart(cartRes);
+      setFavorites(favRes);
+      
       setLoading(false);
     }
     init();
   }, [router]);
 
-  const toggleFavorite = (e: React.MouseEvent, id: string) => {
+  const toggleFavorite = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
-    setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+    if (!userId) return;
+    const isFav = favorites.includes(id);
+    
+    // Оптимистичное обновление (сразу меняем UI)
+    setFavorites(prev => isFav ? prev.filter(f => f !== id) : [...prev, id]);
+    
+    // Обновляем в БД
+    await toggleFavoriteInDB(userId, id, isFav);
   };
 
-  const addToCart = (e: React.MouseEvent, id: string) => { 
+  const addToCart = async (e: React.MouseEvent, id: string) => { 
     e.preventDefault(); 
-    setCart(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 })); 
+    if (!userId) return;
+    const newCart = { ...cart, [id]: (cart[id] || 0) + 1 };
+    setCart(newCart);
+    await saveCartToDB(userId, newCart);
   };
 
-  const removeFromCart = (e: React.MouseEvent, id: string) => {
+  const removeFromCart = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
-    setCart(prev => {
-      const newCart = { ...prev };
-      if (newCart[id] > 1) newCart[id] -= 1;
-      else delete newCart[id];
-      return newCart;
-    });
+    if (!userId) return;
+    const newCart = { ...cart };
+    if (newCart[id] > 1) newCart[id] -= 1;
+    else delete newCart[id];
+    setCart(newCart);
+    await saveCartToDB(userId, newCart);
   };
 
   const filteredProducts = allProducts.filter(p => {
     if (filterCategory && p.category !== filterCategory) return false;
     if (filterPriceMax && filterPriceMax.trim() !== '' && p.price > parseInt(filterPriceMax)) return false;
-    
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const searchString = `${p.name || ''} ${p.description || ''} ${p.characteristics || ''}`.toLowerCase();
@@ -100,7 +106,6 @@ export default function Shop() {
       const matchesAllWords = words.every(word => searchString.includes(word));
       if (!matchesAllWords) return false;
     }
-    
     return true;
   });
 

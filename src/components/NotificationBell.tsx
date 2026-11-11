@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Settings, Eye } from 'lucide-react';
+import { Bell, Check, Settings, Eye, ChevronDown } from 'lucide-react';
 import { supabase } from '../app/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -49,6 +49,7 @@ export default function NotificationBell() {
         </div>
         <span className="text-xs font-bold text-gray-600 group-hover:text-[#5FC36C] transition-colors whitespace-nowrap flex items-center gap-1">
           Уведомления
+          <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
@@ -59,8 +60,6 @@ export default function NotificationBell() {
               <h3 className="font-black text-lg">Уведомления</h3>
               <div className="flex gap-2">
                 <button onClick={markAllAsRead} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-[#5FC36C]" title="Прочитать все"><Check className="w-5 h-5" /></button>
-                
-                {/* ИСПРАВЛЕННАЯ ССЫЛКА НА НАСТРОЙКИ */}
                 <button onClick={() => router.push('/shop/settings?tab=notifications')} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-black" title="Настройки уведомлений">
                   <Settings className="w-5 h-5" />
                 </button>

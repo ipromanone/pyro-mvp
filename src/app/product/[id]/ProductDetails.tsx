@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { useRouter, useParams } from 'next/navigation';
 import ShopHeader from '../../../components/ShopHeader';
+import { loadCartFromDB, saveCartToDB, loadFavoritesFromDB, toggleFavoriteInDB } from '../../../utils/cartHelpers';
+import { Heart, ShoppingCart } from 'lucide-react';
 
 export default function ProductDetails() {
   const router = useRouter();
@@ -18,6 +20,10 @@ export default function ProductDetails() {
   const [clientOrg, setClientOrg] = useState<any>(null);
   const [cartCount, setCartCount] = useState(0);
   const [favoritesCount, setFavoritesCount] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [cartQty, setCartQty] = useState(0);
+  const [isFav, setIsFav] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -26,22 +32,62 @@ export default function ProductDetails() {
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        setUserId(session.user.id);
         const { data: clientData } = await supabase.from('organizations').select('*').eq('user_id', session.user.id).limit(1);
         if (clientData && clientData.length > 0) setClientOrg(clientData[0]);
-      }
 
-      const savedCart = localStorage.getItem('pyro_cart');
-      if (savedCart) {
-        const cart = JSON.parse(savedCart);
-        setCartCount(Object.values(cart).reduce((a: number, b: any) => a + Number(b), 0));
+        // Загружаем корзину и избранное из БД
+        const [cartRes, favRes] = await Promise.all([
+          loadCartFromDB(session.user.id),
+          loadFavoritesFromDB(session.user.id)
+        ]);
+        
+        setCartQty(cartRes[id] || 0);
+        setIsFav(favRes.includes(id));
+        
+        // Считаем общее количество для шапки
+        setCartCount(Object.values(cartRes).reduce((a: number, b: any) => a + Number(b), 0));
+        setFavoritesCount(favRes.length);
       }
-      const savedFav = localStorage.getItem('pyro_favorites');
-      if (savedFav) setFavoritesCount(JSON.parse(savedFav).length);
 
       setLoading(false);
     }
     if (id) fetchData();
   }, [id]);
+
+  const addToCart = async () => {
+    if (!userId) return;
+    const currentCart = await loadCartFromDB(userId);
+    const newQty = (currentCart[id] || 0) + 1;
+    currentCart[id] = newQty;
+    
+    setCartQty(newQty);
+    setCartCount(Object.values(currentCart).reduce((a: number, b: any) => a + Number(b), 0));
+    await saveCartToDB(userId, currentCart);
+  };
+
+  const removeFromCart = async () => {
+    if (!userId) return;
+    const currentCart = await loadCartFromDB(userId);
+    if (currentCart[id] > 1) currentCart[id] -= 1;
+    else delete currentCart[id];
+    
+    setCartQty(currentCart[id] || 0);
+    setCartCount(Object.values(currentCart).reduce((a: number, b: any) => a + Number(b), 0));
+    await saveCartToDB(userId, currentCart);
+  };
+
+  const toggleFavorite = async () => {
+    if (!userId) return;
+    const isFavNow = isFav;
+    setIsFav(!isFavNow);
+    
+    // Обновляем счетчик в шапке
+    if (isFavNow) setFavoritesCount(prev => prev - 1);
+    else setFavoritesCount(prev => prev + 1);
+    
+    await toggleFavoriteInDB(userId, id, isFavNow);
+  };
 
   const renderVideo = (url: string) => {
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
@@ -101,7 +147,15 @@ export default function ProductDetails() {
           </div>
 
           <div className="flex flex-col">
-            <h1 className="text-4xl font-black leading-tight mb-6">{product.name}</h1>
+            <div className="flex justify-between items-start mb-6">
+              <h1 className="text-4xl font-black leading-tight">{product.name}</h1>
+              <button 
+                onClick={toggleFavorite}
+                className={`p-2 rounded-full border transition-colors ${isFav ? 'border-[#5FC36C] text-[#5FC36C] bg-green-50' : 'border-gray-200 text-gray-400 hover:text-[#5FC36C]'}`}
+              >
+                <Heart className="w-6 h-6" fill={isFav ? "currentColor" : "none"} />
+              </button>
+            </div>
             
             <div className="flex gap-4 mb-8">
               <span className={`inline-block text-sm font-black px-4 py-2 rounded-xl ${product.stock > 0 ? 'bg-[#5FC36C] text-white' : 'bg-gray-200 text-gray-500'}`}>
@@ -131,9 +185,27 @@ export default function ProductDetails() {
             )}
 
             <div className="mt-auto pt-6">
-              <button disabled={product.stock === 0} className="w-full bg-[#5FC36C] text-white py-5 rounded-2xl font-black text-xl hover:bg-[#4CAF50] transition-all disabled:bg-gray-200 disabled:text-gray-400">
-                {product.stock > 0 ? 'Добавить в корзину' : 'Ожидается'}
-              </button>
+              {cartQty > 0 ? (
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between bg-gray-50 rounded-lg border border-gray-200 p-1 w-32">
+                    <button onClick={removeFromCart} className="w-10 h-10 flex items-center justify-center rounded-md bg-white text-gray-600 hover:text-[#5FC36C] shadow-sm font-bold">-</button>
+                    <span className="font-bold text-gray-900">{cartQty}</span>
+                    <button onClick={addToCart} className="w-10 h-10 flex items-center justify-center rounded-md bg-white text-gray-600 hover:text-[#5FC36C] shadow-sm font-bold">+</button>
+                  </div>
+                  <button onClick={() => router.push('/shop/cart')} className="flex-grow bg-gray-900 text-white py-3.5 rounded-xl font-bold hover:bg-black transition-colors">
+                    Перейти в корзину
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={addToCart}
+                  disabled={product.stock === 0}
+                  className="w-full bg-[#5FC36C] text-white py-5 rounded-2xl font-black text-xl hover:bg-[#4CAF50] transition-all disabled:bg-gray-200 disabled:text-gray-400 flex items-center justify-center gap-2"
+                >
+                  <ShoppingCart className="w-6 h-6" />
+                  {product.stock > 0 ? 'Добавить в корзину' : 'Ожидается'}
+                </button>
+              )}
             </div>
           </div>
         </div>
