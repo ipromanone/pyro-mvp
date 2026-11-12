@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { useRouter, useParams } from 'next/navigation';
 import ShopHeader from '../../../components/ShopHeader';
+import Footer from '../../../components/Footer';
+import Toast from '../../../components/Toast';
 import { loadCartFromDB, saveCartToDB, loadFavoritesFromDB, toggleFavoriteInDB } from '../../../utils/cartHelpers';
-import { Heart, ShoppingCart } from 'lucide-react';
+import { Heart, ShoppingCart, Package, Box, Layers } from 'lucide-react';
 
 export default function ProductDetails() {
   const router = useRouter();
@@ -24,11 +26,19 @@ export default function ProductDetails() {
 
   const [cartQty, setCartQty] = useState(0);
   const [isFav, setIsFav] = useState(false);
+  
+  const [selectedUnit, setSelectedUnit] = useState<'piece' | 'pack' | 'box'>('piece');
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
-      if (!error && data) setProduct(data);
+      if (!error && data) {
+        setProduct(data);
+        if (data.units_per_box && !data.units_per_pack) setSelectedUnit('box');
+        else if (data.units_per_pack) setSelectedUnit('pack');
+        else setSelectedUnit('piece');
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -36,56 +46,85 @@ export default function ProductDetails() {
         const { data: clientData } = await supabase.from('organizations').select('*').eq('user_id', session.user.id).limit(1);
         if (clientData && clientData.length > 0) setClientOrg(clientData[0]);
 
-        // Загружаем корзину и избранное из БД
         const [cartRes, favRes] = await Promise.all([
           loadCartFromDB(session.user.id),
           loadFavoritesFromDB(session.user.id)
         ]);
         
-        setCartQty(cartRes[id] || 0);
-        setIsFav(favRes.includes(id));
+        const existingItem = cartRes.find((item: any) => item.product_id === id && item.unit_type === selectedUnit);
+        if (existingItem) {
+          setCartQty(existingItem.quantity);
+        } else {
+          setCartQty(0);
+        }
         
-        // Считаем общее количество для шапки
-        setCartCount(Object.values(cartRes).reduce((a: number, b: any) => a + Number(b), 0));
+        setIsFav(favRes.includes(id));
+        setCartCount(cartRes.reduce((sum: number, item: any) => sum + item.quantity, 0));
         setFavoritesCount(favRes.length);
       }
 
       setLoading(false);
     }
     if (id) fetchData();
-  }, [id]);
+  }, [id, selectedUnit]);
+
+  const getDisplayPrice = () => {
+    if (!product) return 0;
+    if (selectedUnit === 'pack' && product.units_per_pack) return product.price * product.units_per_pack;
+    if (selectedUnit === 'box' && product.units_per_box) return product.price * product.units_per_box;
+    return product.price;
+  };
 
   const addToCart = async () => {
-    if (!userId) return;
+    if (!userId || !product) return;
     const currentCart = await loadCartFromDB(userId);
-    const newQty = (currentCart[id] || 0) + 1;
-    currentCart[id] = newQty;
     
-    setCartQty(newQty);
-    setCartCount(Object.values(currentCart).reduce((a: number, b: any) => a + Number(b), 0));
-    await saveCartToDB(userId, currentCart);
+    const existingIndex = currentCart.findIndex((item: any) => item.product_id === id && item.unit_type === selectedUnit);
+    
+    let newCart;
+    if (existingIndex >= 0) {
+      newCart = [...currentCart];
+      newCart[existingIndex].quantity += 1;
+    } else {
+      newCart = [...currentCart, { product_id: id, quantity: 1, unit_type: selectedUnit }];
+    }
+    
+    const updatedItem = newCart.find((item: any) => item.product_id === id && item.unit_type === selectedUnit);
+    setCartQty(updatedItem ? updatedItem.quantity : 0);
+    setCartCount(newCart.reduce((sum: number, item: any) => sum + item.quantity, 0));
+    
+    await saveCartToDB(userId, newCart);
+    
+    setToast({ message: 'Товар добавлен в корзину', type: 'success' });
   };
 
   const removeFromCart = async () => {
-    if (!userId) return;
+    if (!userId || !product) return;
     const currentCart = await loadCartFromDB(userId);
-    if (currentCart[id] > 1) currentCart[id] -= 1;
-    else delete currentCart[id];
+    const existingIndex = currentCart.findIndex((item: any) => item.product_id === id && item.unit_type === selectedUnit);
+    if (existingIndex < 0) return;
     
-    setCartQty(currentCart[id] || 0);
-    setCartCount(Object.values(currentCart).reduce((a: number, b: any) => a + Number(b), 0));
-    await saveCartToDB(userId, currentCart);
+    let newCart;
+    if (currentCart[existingIndex].quantity > 1) {
+      newCart = [...currentCart];
+      newCart[existingIndex].quantity -= 1;
+    } else {
+      newCart = currentCart.filter((_: any, idx: number) => idx !== existingIndex);
+    }
+    
+    const updatedItem = newCart.find((item: any) => item.product_id === id && item.unit_type === selectedUnit);
+    setCartQty(updatedItem ? updatedItem.quantity : 0);
+    setCartCount(newCart.reduce((sum: number, item: any) => sum + item.quantity, 0));
+    
+    await saveCartToDB(userId, newCart);
   };
 
   const toggleFavorite = async () => {
     if (!userId) return;
     const isFavNow = isFav;
     setIsFav(!isFavNow);
-    
-    // Обновляем счетчик в шапке
     if (isFavNow) setFavoritesCount(prev => prev - 1);
     else setFavoritesCount(prev => prev + 1);
-    
     await toggleFavoriteInDB(userId, id, isFavNow);
   };
 
@@ -109,6 +148,7 @@ export default function ProductDetails() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F9FAFB] text-[#1A1A1A] font-sans">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       <ShopHeader 
         cartCount={cartCount} 
@@ -166,7 +206,34 @@ export default function ProductDetails() {
               </span>
             </div>
 
-            <div className="text-5xl font-black mb-10">{product.price} ₽</div>
+            <div className="text-5xl font-black mb-10">{getDisplayPrice()} ₽</div>
+
+            <div className="mb-10">
+              <h3 className="text-lg font-black mb-3">Единица заказа</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button onClick={() => setSelectedUnit('piece')} className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${selectedUnit === 'piece' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <Box className="w-6 h-6 mb-2 text-gray-700" />
+                  <span className="font-bold text-sm">Штука</span>
+                  <span className="text-xs text-gray-500">1 шт.</span>
+                </button>
+
+                {product.units_per_pack && (
+                  <button onClick={() => setSelectedUnit('pack')} className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${selectedUnit === 'pack' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <Layers className="w-6 h-6 mb-2 text-gray-700" />
+                    <span className="font-bold text-sm">Блок</span>
+                    <span className="text-xs text-gray-500">{product.units_per_pack} шт.</span>
+                  </button>
+                )}
+
+                {product.units_per_box && (
+                  <button onClick={() => setSelectedUnit('box')} className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${selectedUnit === 'box' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <Package className="w-6 h-6 mb-2 text-gray-700" />
+                    <span className="font-bold text-sm">Ящик</span>
+                    <span className="text-xs text-gray-500">{product.units_per_box} шт.</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
             {product.description && (
               <div className="mb-10">
@@ -187,9 +254,11 @@ export default function ProductDetails() {
             <div className="mt-auto pt-6">
               {cartQty > 0 ? (
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-between bg-gray-50 rounded-lg border border-gray-200 p-1 w-32">
+                  <div className="flex items-center justify-between bg-gray-50 rounded-lg border border-gray-200 p-1 min-w-[140px]">
                     <button onClick={removeFromCart} className="w-10 h-10 flex items-center justify-center rounded-md bg-white text-gray-600 hover:text-[#5FC36C] shadow-sm font-bold">-</button>
-                    <span className="font-bold text-gray-900">{cartQty}</span>
+                    <span className="font-bold text-gray-900 text-lg px-2 whitespace-nowrap">
+                      {cartQty} {selectedUnit === 'piece' ? 'шт.' : selectedUnit === 'pack' ? 'блок.' : 'ящ.'}
+                    </span>
                     <button onClick={addToCart} className="w-10 h-10 flex items-center justify-center rounded-md bg-white text-gray-600 hover:text-[#5FC36C] shadow-sm font-bold">+</button>
                   </div>
                   <button onClick={() => router.push('/shop/cart')} className="flex-grow bg-gray-900 text-white py-3.5 rounded-xl font-bold hover:bg-black transition-colors">
@@ -228,6 +297,7 @@ export default function ProductDetails() {
         </div>
       )}
 
+      <Footer />
     </div>
   );
 }

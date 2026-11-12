@@ -8,7 +8,7 @@ import ShopHeader from '../../../components/ShopHeader';
 import InvoiceTemplate from '../../../components/InvoiceTemplate';
 import { numberToWords } from '../../../utils/generateInvoice';
 import { loadCartFromDB, saveCartToDB } from '../../../utils/cartHelpers';
-import { Trash2, MapPin, Truck, Package, Clock, CheckCircle, AlertTriangle, ShoppingCart, FileWarning, CreditCard, Lock, Info, Calculator } from 'lucide-react';
+import { Trash2, MapPin, Truck, Package, Clock, CheckCircle, AlertTriangle, ShoppingCart, FileWarning, CreditCard, Lock, Info, Calculator, Box, Layers, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CartPage() {
@@ -16,36 +16,31 @@ export default function CartPage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [productsLoading, setProductsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  
+
   const [allProducts, setAllProducts] = useState<any[]>([]);
-  const [cart, setCart] = useState<{ [key: string]: number }>({});
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  
+  const [cartItems, setCartItems] = useState<any[]>([]); 
+  const [selectedItems, setSelectedItems] = useState<string[]>([]); 
+
   const [clientOrg, setClientOrg] = useState<any>(null);
   const [adminOrg, setAdminOrg] = useState<any>(null);
-  
+
   const [paymentMethod, setPaymentMethod] = useState('Счет');
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
   const [address, setAddress] = useState('');
-  
-  // Стейты для формы карты
+
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [cardName, setCardName] = useState('');
-  
-  const [isCheckout, setIsCheckout] = useState(false);
+
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
-  const [successDeliveryMethod, setSuccessDeliveryMethod] = useState('');
-  
+
   const [isContractSigned, setIsContractSigned] = useState(false);
   const [isRequisitesFilled, setIsRequisitesFilled] = useState(false);
-  
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Демо-стоимость доставки
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [deliveryCost, setDeliveryCost] = useState(0);
 
   useEffect(() => {
@@ -55,14 +50,14 @@ export default function CartPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!isMounted) return;
       if (!session) { router.push('/'); return; }
-      
+
       setUserId(session.user.id);
       setIsAuthorized(true);
 
       const dbCart = await loadCartFromDB(session.user.id);
       if (isMounted) {
-        setCart(dbCart);
-        setSelectedItems(Object.keys(dbCart));
+        setCartItems(dbCart);
+        setSelectedItems(dbCart.map((item: any) => item.id));
       }
 
       const [clientRes, adminRes] = await Promise.all([
@@ -79,20 +74,19 @@ export default function CartPage() {
       }
       if (adminRes.data && isMounted) setAdminOrg(adminRes.data);
 
-      const cartIds = Object.keys(dbCart);
-      if (cartIds.length > 0) {
-        const { data: productsData } = await supabase.from('products').select('*').in('id', cartIds);
+      const cartProductIds = dbCart.map((item: any) => item.product_id);
+      if (cartProductIds.length > 0) {
+        const { data: productsData } = await supabase.from('products').select('*').in('id', cartProductIds);
         if (productsData && isMounted) setAllProducts(productsData);
       }
-      
+
       if (isMounted) setProductsLoading(false);
     }
-    
+
     init();
     return () => { isMounted = false; };
   }, [router]);
 
-  // Логика расчета стоимости доставки (демо)
   useEffect(() => {
     if (deliveryMethod === 'yandex') setDeliveryCost(500);
     else if (deliveryMethod === 'dostavista') setDeliveryCost(450);
@@ -103,40 +97,76 @@ export default function CartPage() {
     if (paymentMethod === 'Наличные' && (deliveryMethod === 'yandex' || deliveryMethod === 'dostavista')) setDeliveryMethod('pickup');
   }, [paymentMethod, deliveryMethod]);
 
-  const updateCart = async (newCart: { [key: string]: number }) => {
-    setCart(newCart);
-    if (userId) await saveCartToDB(userId, newCart);
+  const updateCart = async (newItems: any[]) => {
+    setCartItems(newItems);
+    if (userId) await saveCartToDB(userId, newItems);
   };
 
   const handleToggleAll = () => {
-    if (selectedItems.length === Object.keys(cart).length) setSelectedItems([]);
-    else setSelectedItems(Object.keys(cart));
+    if (selectedItems.length === cartItems.length) setSelectedItems([]);
+    else setSelectedItems(cartItems.map((item: any) => item.id));
   };
 
-  const handleQuantityChange = async (id: string, delta: number) => {
-    const newQty = (cart[id] || 0) + delta;
+  const handleToggleItem = (id: string) => {
+    setSelectedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleUnitChange = async (cartItemId: string, newUnit: string) => {
+    const item = cartItems.find(i => i.id === cartItemId);
+    if (!item) return;
+    const product = allProducts.find(p => p.id === item.product_id);
+    if (!product) return;
+
+    let currentMultiplier = 1;
+    if (item.unit_type === 'pack' && product.units_per_pack) currentMultiplier = product.units_per_pack;
+    if (item.unit_type === 'box' && product.units_per_box) currentMultiplier = product.units_per_box;
+    const totalPieces = item.quantity * currentMultiplier;
+
+    let newMultiplier = 1;
+    if (newUnit === 'pack' && product.units_per_pack) newMultiplier = product.units_per_pack;
+    if (newUnit === 'box' && product.units_per_box) newMultiplier = product.units_per_box;
+    const newQuantity = Math.ceil(totalPieces / newMultiplier);
+
+    const newItems = cartItems.map(i =>
+      i.id === cartItemId ? { ...i, unit_type: newUnit, quantity: newQuantity } : i
+    );
+    await updateCart(newItems);
+  };
+
+  const handleQuantityInput = async (cartItemId: string, value: string) => {
+    const newQty = parseInt(value) || 0;
     if (newQty <= 0) {
-      const { [id]: _, ...rest } = cart;
-      await updateCart(rest);
-      setSelectedItems(prev => prev.filter(item => item !== id));
+      const newItems = cartItems.filter(i => i.id !== cartItemId);
+      await updateCart(newItems);
+      setSelectedItems(prev => prev.filter(i => i !== cartItemId));
     } else {
-      await updateCart({ ...cart, [id]: newQty });
+      const newItems = cartItems.map(i =>
+        i.id === cartItemId ? { ...i, quantity: newQty } : i
+      );
+      await updateCart(newItems);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const { [id]: _, ...rest } = cart;
-    await updateCart(rest);
-    setSelectedItems(prev => prev.filter(item => item !== id));
+  const handleDelete = async (cartItemId: string) => {
+    const newItems = cartItems.filter(i => i.id !== cartItemId);
+    await updateCart(newItems);
+    setSelectedItems(prev => prev.filter(i => i !== cartItemId));
   };
 
-  const selectedTotal = selectedItems.reduce((total, id) => {
-    const product = allProducts.find(p => p.id === id);
-    return total + (product ? product.price * (cart[id] || 0) : 0);
+  const selectedTotal = selectedItems.reduce((total, cartItemId) => {
+    const item = cartItems.find(i => i.id === cartItemId);
+    if (!item) return total;
+    const product = allProducts.find(p => p.id === item.product_id);
+    if (!product) return total;
+
+    let unitPrice = product.price;
+    if (item.unit_type === 'pack' && product.units_per_pack) unitPrice = product.price * product.units_per_pack;
+    if (item.unit_type === 'box' && product.units_per_box) unitPrice = product.price * product.units_per_box;
+
+    return total + unitPrice * item.quantity;
   }, 0);
 
   const finalTotal = selectedTotal + deliveryCost;
-  const selectedCount = selectedItems.reduce((count, id) => count + (cart[id] || 0), 0);
   const isThirdPartyDelivery = deliveryMethod === 'yandex' || deliveryMethod === 'dostavista';
 
   const handleCheckout = async () => {
@@ -173,74 +203,82 @@ export default function CartPage() {
 
     const invoiceNumber = `СЧ-${Math.floor(Math.random() * 10000) + 1000}`;
     const { data: orderData, error } = await supabase.from('orders').insert([{
-      customer_name: clientOrg.name, customer_phone: clientOrg.contact_phone, 
+      customer_name: clientOrg.name,
+      customer_phone: clientOrg.contact_phone,
       total_price: finalTotal,
-      payment_method: paymentMethod, 
-      delivery_method: deliveryMethod, 
+      payment_method: paymentMethod,
+      delivery_method: deliveryMethod,
       delivery_address: address,
       delivery_status: deliveryStatus,
       payment_status: paymentStatus
     }]).select().single();
 
     if (error || !orderData) { setToast({ message: 'Ошибка: ' + error?.message, type: 'error' }); return; }
-    
-    await supabase.from('order_items').insert(selectedItems.map(id => {
-      const p = allProducts.find(prod => prod.id === id);
-      return { order_id: orderData.id, product_id: id, quantity: cart[id], price: p?.price || 0 };
-    }));
+
+    const orderItems = selectedItems.map(cartItemId => {
+      const item = cartItems.find(i => i.id === cartItemId);
+      const p = allProducts.find(prod => prod.id === item?.product_id);
+      let displayName = p?.name || '';
+      let itemTotal = p?.price || 0;
+
+      if (item.unit_type === 'box' && p?.units_per_box) {
+        displayName += ` (Ящик ${p.units_per_box} шт.)`;
+        itemTotal = p.price * p.units_per_box;
+      } else if (item.unit_type === 'pack' && p?.units_per_pack) {
+        displayName += ` (Блок ${p.units_per_pack} шт.)`;
+        itemTotal = p.price * p.units_per_pack;
+      }
+
+      return {
+        order_id: orderData.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: itemTotal,
+        product_name: displayName,
+        unit_type: item.unit_type
+      };
+    });
+
+    await supabase.from('order_items').insert(orderItems);
 
     if (paymentMethod === 'Счет') {
       await supabase.from('invoices').insert([{
-        user_id: clientOrg.user_id, order_id: orderData.id, invoice_number: invoiceNumber,
-        amount: finalTotal, status: 'Ожидает оплаты', admin_org_id: adminOrg?.id || null
+        user_id: clientOrg.user_id,
+        order_id: orderData.id,
+        invoice_number: invoiceNumber,
+        amount: finalTotal,
+        status: 'Ожидает оплаты',
+        admin_org_id: adminOrg?.id || null
       }]);
+
       setInvoiceData({
-        invoiceNumber, date: new Date().toLocaleDateString('ru-RU'), adminOrg, clientOrg,
+        invoiceNumber,
+        date: new Date().toLocaleDateString('ru-RU'),
+        adminOrg,
+        clientOrg,
         items: [
-          ...selectedItems.map(id => ({ name: allProducts.find(p => p.id === id)?.name, quantity: cart[id], price: allProducts.find(p => p.id === id)?.price })),
+          ...orderItems.map(item => ({ name: item.product_name, quantity: item.quantity, price: item.price })),
           ...(deliveryCost > 0 ? [{ name: `Доставка (${deliveryMethod === 'yandex' ? 'Яндекс' : 'Достависта'})`, quantity: 1, price: deliveryCost }] : [])
         ],
-        total: finalTotal, totalWords: numberToWords(finalTotal)
+        total: finalTotal,
+        totalWords: numberToWords(finalTotal)
       });
-      setIsCheckout(false); setShowInvoiceModal(true); setSuccessDeliveryMethod(deliveryMethod);
+      setShowInvoiceModal(true);
     } else {
-      setSuccessDeliveryMethod(deliveryMethod); setOrderSuccess(true); setIsCheckout(false);
+      setOrderSuccess(true);
     }
-    
-    await updateCart({}); 
+
+    await updateCart([]);
     setSelectedItems([]);
-  };
-
-  // --- МАСКИ ДЛЯ КАРТЫ ---
-  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
-    const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
-    setCardNumber(formatted);
-  };
-
-  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
-    const formatted = raw.replace(/(\d{2})(?=\d)/, '$1/');
-    setCardExpiry(formatted);
-  };
-
-  const handleCvcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 3);
-    setCardCvc(raw);
-  };
-
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase();
-    setCardName(raw);
   };
 
   if (!isAuthorized) return <div className="min-h-screen bg-[#F9FAFB]"></div>;
   if (productsLoading && allProducts.length === 0) return <div className="min-h-screen bg-[#F9FAFB]"></div>;
 
-  const cartItems = Object.entries(cart).map(([id, qty]) => {
-    const product = allProducts.find(p => p.id === id);
-    return { ...product, qty, id };
-  }).filter(Boolean);
+  const enrichedItems = cartItems.map(item => {
+    const product = allProducts.find(p => p.id === item.product_id);
+    return { ...item, product };
+  }).filter(item => item.product);
 
   if (orderSuccess) {
     return (
@@ -251,8 +289,8 @@ export default function CartPage() {
             <div className="w-20 h-20 bg-[#5FC36C] rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-white" /></div>
             <h1 className="text-3xl font-black mb-4">Заказ оформлен!</h1>
             <p className="text-gray-600 font-medium mb-8">
-              {paymentMethod === 'Карта' 
-                ? 'Демо-оплата прошла успешно. Ожидайте подтверждения менеджера.' 
+              {paymentMethod === 'Карта'
+                ? 'Демо-оплата прошла успешно. Ожидайте подтверждения менеджера.'
                 : 'Мы свяжемся с вами для подтверждения.'}
             </p>
             <button onClick={() => router.push('/shop/orders')} className="w-full bg-[#5FC36C] text-white py-4 rounded-xl font-black hover:bg-[#4CAF50]">Перейти в заказы</button>
@@ -265,8 +303,8 @@ export default function CartPage() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F9FAFB] text-[#1A1A1A] font-sans">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <ShopHeader cartCount={Object.values(cart).reduce((a, b) => a + Number(b), 0)} favoritesCount={0} clientName={clientOrg?.name || 'Профиль'} />
-      
+      <ShopHeader cartCount={cartItems.reduce((a, b) => a + b.quantity, 0)} favoritesCount={0} clientName={clientOrg?.name || 'Профиль'} />
+
       <div className="flex-grow max-w-[1200px] mx-auto px-6 mt-8 pb-20 w-full">
         <h1 className="text-4xl font-black mb-8">Корзина</h1>
 
@@ -289,41 +327,73 @@ export default function CartPage() {
             <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                 <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={cartItems.length > 0 && selectedItems.length === cartItems.length} onChange={handleToggleAll} className="w-5 h-5 rounded border-gray-300 text-[#5FC36C] focus:ring-[#5FC36C]" />
+                  <input type="checkbox" checked={enrichedItems.length > 0 && selectedItems.length === enrichedItems.length} onChange={handleToggleAll} className="w-5 h-5 rounded border-gray-300 text-[#5FC36C] focus:ring-[#5FC36C]" />
                   <span className="font-bold">Выбрать все</span>
                 </label>
-                <span className="text-sm font-bold text-gray-500">{cartItems.length} товаров</span>
+                <span className="text-sm font-bold text-gray-500">{enrichedItems.length} позиций</span>
               </div>
-              
-              {cartItems.map(item => (
-                <div key={item.id} className="p-6 border-b border-gray-50 last:border-0 flex gap-6 items-center">
-                  <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(i => i !== item.id) : [...prev, item.id])} className="w-5 h-5 rounded border-gray-300 text-[#5FC36C] focus:ring-[#5FC36C]" />
-                  
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="w-24 h-32 object-cover rounded-xl border border-gray-100" />
+
+              {enrichedItems.map(item => (
+                <div key={item.id} className="p-6 border-b border-gray-50 last:border-0 flex gap-6 items-start">
+                  <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => handleToggleItem(item.id)} className="w-5 h-5 rounded border-gray-300 text-[#5FC36C] focus:ring-[#5FC36C] mt-2" />
+
+                  {item.product.image_url ? (
+                    <img src={item.product.image_url} alt={item.product.name} className="w-24 h-32 object-cover rounded-xl border border-gray-100" />
                   ) : (
                     <div className="w-24 h-32 bg-gray-100 rounded-xl border border-gray-100 flex items-center justify-center text-gray-400 text-xs font-bold text-center p-2">Нет фото</div>
                   )}
 
                   <div className="flex-grow">
-                    <h3 className="font-bold text-lg line-clamp-2">{item.name}</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">{item.brand}</p>
+                    <h3 className="font-bold text-lg line-clamp-2">{item.product.name}</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">{item.product.brand}</p>
+
+                    <div className="mt-3 flex flex-col gap-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase">Единица:</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleUnitChange(item.id, 'piece')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${item.unit_type === 'piece' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                          Штука
+                        </button>
+                        {item.product.units_per_pack && (
+                          <button onClick={() => handleUnitChange(item.id, 'pack')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${item.unit_type === 'pack' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                            Блок ({item.product.units_per_pack} шт.)
+                          </button>
+                        )}
+                        {item.product.units_per_box && (
+                          <button onClick={() => handleUnitChange(item.id, 'box')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${item.unit_type === 'box' ? 'border-[#5FC36C] bg-[#E3F2E3]' : 'border-gray-200 hover:border-gray-300'}`}>
+                            Ящик ({item.product.units_per_box} шт.)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <button onClick={() => handleDelete(item.id)} className="text-sm text-gray-400 hover:text-red-500 mt-3 flex items-center gap-1 font-bold">
                       <Trash2 className="w-4 h-4" /> Удалить
                     </button>
                   </div>
                   <div className="flex flex-col items-end gap-4">
-                    <div className="text-2xl font-black">{item.price} ₽</div>
-                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-                      <button onClick={() => handleQuantityChange(item.id, -1)} className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-black font-bold">-</button>
-                      <span className="px-4 font-bold">{item.qty}</span>
-                      <button onClick={() => handleQuantityChange(item.id, 1)} className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-black font-bold">+</button>
+                    <div className="text-2xl font-black">
+                      {item.unit_type === 'pack' && item.product.units_per_pack
+                        ? item.product.price * item.product.units_per_pack
+                        : item.unit_type === 'box' && item.product.units_per_box
+                          ? item.product.price * item.product.units_per_box
+                          : item.product.price} ₽
                     </div>
+                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
+                      <button onClick={() => handleQuantityInput(item.id, String(item.quantity - 1))} className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-black font-bold">-</button>
+                      <input
+                        type="text"
+                        value={item.quantity}
+                        onChange={(e) => handleQuantityInput(item.id, e.target.value)}
+                        className="w-14 text-center font-bold focus:outline-none"
+                      />
+                      <button onClick={() => handleQuantityInput(item.id, String(item.quantity + 1))} className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-black font-bold">+</button>
+                    </div>
+                    <div className="text-sm text-gray-500 font-bold">{item.quantity} {item.unit_type === 'piece' ? 'шт.' : item.unit_type === 'pack' ? 'блок.' : 'ящ.'}</div>
                   </div>
                 </div>
               ))}
-              
-              {cartItems.length === 0 && (
+
+              {enrichedItems.length === 0 && (
                 <div className="p-16 text-center">
                   <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto text-gray-400 mb-4">
                     <ShoppingCart className="w-10 h-10" />
@@ -336,11 +406,11 @@ export default function CartPage() {
             </div>
           </div>
 
-          {cartItems.length > 0 && (
+          {enrichedItems.length > 0 && (
             <div className="w-full lg:w-96 flex-shrink-0">
               <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100 sticky top-24">
                 <h2 className="text-2xl font-black mb-6">Оформление</h2>
-                
+
                 <div className="bg-gray-50 p-5 rounded-2xl mb-6">
                   <p className="text-xs text-gray-400 font-bold uppercase mb-2">Заказ на:</p>
                   <p className="font-bold text-lg">{clientOrg?.name}</p>
@@ -372,13 +442,16 @@ export default function CartPage() {
                       </div>
                       <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-2 py-1 rounded">Демо-режим</span>
                     </div>
-                    
+
                     <div className="space-y-3">
                       <div>
-                        <input 
-                          type="text" 
-                          value={cardNumber} 
-                          onChange={handleCardNumberChange} 
+                        <input
+                          type="text"
+                          value={cardNumber}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                            setCardNumber(raw.replace(/(\d{4})(?=\d)/g, '$1 '));
+                          }}
                           placeholder="0000 0000 0000 0000"
                           maxLength={19}
                           className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none tracking-widest"
@@ -386,20 +459,26 @@ export default function CartPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <input 
-                            type="text" 
-                            value={cardExpiry} 
-                            onChange={handleExpiryChange} 
+                          <input
+                            type="text"
+                            value={cardExpiry}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+                              setCardExpiry(raw.replace(/(\d{2})(?=\d)/, '$1/'));
+                            }}
                             placeholder="ММ/ГГ"
                             maxLength={5}
                             className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
                           />
                         </div>
                         <div>
-                          <input 
+                          <input
                             type="password"
-                            value={cardCvc} 
-                            onChange={handleCvcChange} 
+                            value={cardCvc}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '').slice(0, 3);
+                              setCardCvc(raw);
+                            }}
                             placeholder="CVC"
                             maxLength={3}
                             className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
@@ -407,10 +486,13 @@ export default function CartPage() {
                         </div>
                       </div>
                       <div>
-                        <input 
-                          type="text" 
-                          value={cardName} 
-                          onChange={handleNameChange} 
+                        <input
+                          type="text"
+                          value={cardName}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase();
+                            setCardName(raw);
+                          }}
                           placeholder="IVAN IVANOV"
                           className="w-full bg-white border border-gray-200 rounded-xl p-3 font-medium focus:ring-2 focus:ring-[#5FC36C] outline-none"
                         />
@@ -453,10 +535,6 @@ export default function CartPage() {
                       <span>Стоимость:</span>
                       <span className="font-black text-lg text-gray-900">{deliveryCost} ₽</span>
                     </div>
-                    <div className="flex items-start gap-2 mt-3 text-xs text-gray-500 font-medium">
-                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>Оплачивается отдельно водителю при получении (или курьеру). Стоимость указана демонстративно.</span>
-                    </div>
                   </div>
                 )}
 
@@ -479,17 +557,27 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                <button 
-                  onClick={handleCheckout} 
+                <button
+                  onClick={handleCheckout}
                   disabled={!isContractSigned || !isRequisitesFilled}
                   className={`w-full py-4 rounded-xl font-black text-lg transition-colors ${
                     isContractSigned && isRequisitesFilled
-                      ? 'bg-[#5FC36C] text-white hover:bg-[#4CAF50] shadow-lg shadow-green-500/20' 
+                      ? 'bg-[#5FC36C] text-white hover:bg-[#4CAF50] shadow-lg shadow-green-500/20'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   {isContractSigned && isRequisitesFilled ? 'Оформить заказ' : 'Требуется договор / реквизиты'}
                 </button>
+
+                {/* ССЫЛКА НА СТРАНИЦУ ПОДДЕРЖКИ */}
+                <Link 
+                  href="/shop/support" 
+                  className="w-full mt-4 py-3 text-center text-sm font-bold text-gray-500 hover:text-[#5FC36C] transition-colors flex items-center justify-center gap-2 bg-gray-50 rounded-xl hover:bg-[#E3F2E3]"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Возникли вопросы по счету? Напишите нам
+                </Link>
+
               </div>
             </div>
           )}
