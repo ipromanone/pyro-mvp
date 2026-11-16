@@ -72,6 +72,7 @@ export default function Shop() {
 
   const toggleFavorite = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!userId) return;
     const isFav = favorites.includes(id);
     setFavorites(prev => isFav ? prev.filter(f => f !== id) : [...prev, id]);
@@ -137,7 +138,7 @@ export default function Shop() {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  if (!isAuthorized || loading) return <div className="min-h-screen bg-[#F9FAFB]"></div>;
+  if (!isAuthorized || loading) return <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900"></div>;
 
   const gridCols = 
     viewMode === 'grid4' ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4' : 
@@ -145,7 +146,7 @@ export default function Shop() {
     'grid-cols-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8';
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] text-[#1A1A1A] font-sans pb-20">
+    <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900 text-[#1A1A1A] dark:text-white font-sans pb-20 transition-colors duration-300">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       {showOnboarding && (
@@ -182,7 +183,7 @@ export default function Shop() {
       <div className="max-w-[1440px] mx-auto px-8 pt-8 flex flex-col lg:flex-row gap-10">
         
         <aside className="w-full lg:w-72 flex-shrink-0 relative z-10">
-          <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm sticky top-24">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-[2rem] border border-gray-100 dark:border-gray-700 shadow-sm sticky top-24 transition-colors">
             <div className="flex items-center gap-2 mb-6">
               <Filter className="w-5 h-5 text-[#5FC36C]" />
               <h3 className="text-lg font-black">Фильтры</h3>
@@ -190,7 +191,7 @@ export default function Shop() {
             
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Категория</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Категория</label>
                 <CustomSelect 
                   value={filterCategory}
                   onChange={setFilterCategory}
@@ -199,19 +200,19 @@ export default function Shop() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Цена до, ₽</label>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Цена до, ₽</label>
                 <input 
                   type="number" 
                   placeholder="Например, 5000" 
                   value={filterPriceMax} 
                   onChange={e => setFilterPriceMax(e.target.value)} 
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-medium focus:outline-none focus:border-[#5FC36C] focus:ring-1 focus:ring-[#5FC36C] transition-all" 
+                  className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm font-medium focus:outline-none focus:border-[#5FC36C] focus:ring-1 focus:ring-[#5FC36C] transition-all text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500" 
                 />
               </div>
 
               <button 
                 onClick={() => { setFilterCategory(''); setFilterPriceMax(''); setSearchInput(''); setSearchQuery(''); }} 
-                className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors"
+                className="w-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Сбросить фильтры
               </button>
@@ -244,13 +245,13 @@ export default function Shop() {
             <h2 className="text-2xl font-black">Каталог товаров</h2>
             
             <div className="flex items-center gap-4">
-              <span className="text-sm font-bold text-gray-500">Найдено: {filteredProducts.length}</span>
+              <span className="text-sm font-bold text-gray-500 dark:text-gray-400">Найдено: {filteredProducts.length}</span>
               
-              <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm">
-                <button onClick={() => setViewMode('grid4')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid4' ? 'bg-[#E3F2E3] text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600'}`} title="4 в ряд"><Grid2X2 className="w-5 h-5" /></button>
-                <button onClick={() => setViewMode('grid6')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid6' ? 'bg-[#E3F2E3] text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600'}`} title="6 в ряд"><Grid3X3 className="w-5 h-5" /></button>
-                <button onClick={() => setViewMode('grid8')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid8' ? 'bg-[#E3F2E3] text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600'}`} title="8 в ряд"><LayoutGrid className="w-5 h-5" /></button>
-                <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-[#E3F2E3] text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600'}`} title="Список (прайс)"><List className="w-5 h-5" /></button>
+              <div className="flex bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-1 shadow-sm">
+                <button onClick={() => setViewMode('grid4')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid4' ? 'bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`} title="4 в ряд"><Grid2X2 className="w-5 h-5" /></button>
+                <button onClick={() => setViewMode('grid6')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid6' ? 'bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`} title="6 в ряд"><Grid3X3 className="w-5 h-5" /></button>
+                <button onClick={() => setViewMode('grid8')} className={`p-2 rounded-lg transition-colors ${viewMode === 'grid8' ? 'bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`} title="8 в ряд"><LayoutGrid className="w-5 h-5" /></button>
+                <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C]' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`} title="Список (прайс)"><List className="w-5 h-5" /></button>
               </div>
             </div>
           </div>
@@ -265,9 +266,12 @@ export default function Shop() {
                 const isCompact = viewMode === 'grid6' || viewMode === 'grid8';
 
                 return (
-                  <Link href={`/product/${product.id}`} key={product.id} className="group flex flex-col bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 relative">
+                  <div key={product.id} className="relative group flex flex-col bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden hover:shadow-xl transition-all duration-300">
                     
-                    <div className={`relative bg-gray-50 overflow-hidden ${isCompact ? 'aspect-square' : 'aspect-[3/4]'}`}>
+                    {/* Ссылка на всю карточку (кроме кнопок) */}
+                    <Link href={`/product/${product.id}`} className="absolute inset-0 z-0" />
+
+                    <div className={`relative bg-gray-50 dark:bg-gray-700/50 overflow-hidden ${isCompact ? 'aspect-square' : 'aspect-[3/4]'} z-10 pointer-events-none`}>
                       {product.image_url ? (
                         <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       ) : (
@@ -282,32 +286,32 @@ export default function Shop() {
 
                       <button 
                         onClick={(e) => toggleFavorite(e, product.id)} 
-                        className={`absolute top-2 right-2 z-10 p-2 rounded-full bg-white/90 backdrop-blur-sm shadow-sm transition-all hover:scale-110 ${isFav ? 'text-[#5FC36C]' : 'text-gray-400 hover:text-[#5FC36C]'}`}
+                        className={`absolute top-2 right-2 z-20 p-2 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-sm transition-all hover:scale-110 pointer-events-auto ${isFav ? 'text-[#5FC36C]' : 'text-gray-400 hover:text-[#5FC36C]'}`}
                       >
                         <Heart className="w-4 h-4" fill={isFav ? "currentColor" : "none"} />
                       </button>
                     </div>
 
-                    <div className={`p-3 flex flex-col flex-grow ${isCompact ? 'p-2' : 'p-3'}`}>
+                    <div className={`p-3 flex flex-col flex-grow relative z-10 ${isCompact ? 'p-2' : 'p-3'}`}>
                       {!isCompact && (
                         <div className="mb-1">
                           <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">{product.brand || 'Бренд'}</span>
                         </div>
                       )}
                       
-                      <h2 className={`font-bold text-gray-900 leading-snug line-clamp-2 group-hover:text-[#5FC36C] transition-colors ${isCompact ? 'text-[11px] mb-1' : 'text-base mb-2'}`}>
+                      <h2 className={`font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#5FC36C] transition-colors ${isCompact ? 'text-[11px] mb-1' : 'text-base mb-2'}`}>
                         {product.name}
                       </h2>
                       
                       {!isCompact && (
                         <div className="flex flex-wrap gap-1 mb-2">
                           {product.units_per_pack && (
-                            <span className="text-[10px] text-[#5FC36C] font-black bg-[#E3F2E3] px-1.5 py-0.5 rounded-md">
+                            <span className="text-[10px] text-[#5FC36C] font-black bg-[#E3F2E3] dark:bg-green-900/30 px-1.5 py-0.5 rounded-md">
                               Блок: {product.units_per_pack} шт.
                             </span>
                           )}
                           {product.units_per_box && (
-                            <span className="text-[10px] text-[#5FC36C] font-black bg-[#E3F2E3] px-1.5 py-0.5 rounded-md">
+                            <span className="text-[10px] text-[#5FC36C] font-black bg-[#E3F2E3] dark:bg-green-900/30 px-1.5 py-0.5 rounded-md">
                               Ящик: {product.units_per_box} шт.
                             </span>
                           )}
@@ -316,17 +320,17 @@ export default function Shop() {
 
                       <div className="mt-auto">
                         <div className={`flex items-baseline gap-2 mb-3 ${isCompact ? 'mb-2' : 'mb-3'}`}>
-                          <span className={`font-black text-gray-900 ${isCompact ? 'text-sm' : 'text-xl'}`}>{product.price} ₽</span>
+                          <span className={`font-black text-gray-900 dark:text-white ${isCompact ? 'text-sm' : 'text-xl'}`}>{product.price} ₽</span>
                           {hasDiscount && !isCompact && (
                             <span className="text-xs font-bold text-gray-400 line-through decoration-gray-300">{product.old_price} ₽</span>
                           )}
                         </div>
 
                         {cartText ? (
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-2 relative z-20">
                             <div 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push('/shop/cart'); }}
-                              className="w-full bg-[#E3F2E3] text-[#5FC36C] border-2 border-[#5FC36C] rounded-lg py-2 px-2 flex items-center justify-between hover:bg-[#d0ebd0] transition-colors cursor-pointer"
+                              className="w-full bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C] border-2 border-[#5FC36C] rounded-lg py-2 px-2 flex items-center justify-between hover:bg-[#d0ebd0] dark:hover:bg-green-900/50 transition-colors cursor-pointer"
                             >
                               <div className="flex items-center gap-1.5 overflow-hidden">
                                 <Check className="w-4 h-4 shrink-0" />
@@ -338,17 +342,17 @@ export default function Shop() {
                             </div>
                             
                             <button 
-                              onClick={(e) => { e.preventDefault(); handleQuickAdd(product); }}
-                              className="w-full bg-white text-gray-600 border-2 border-gray-200 rounded-lg py-1.5 font-bold text-[11px] hover:border-[#5FC36C] hover:text-[#5FC36C] transition-colors flex items-center justify-center gap-1"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleQuickAdd(product); }}
+                              className="w-full bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-2 border-gray-200 dark:border-gray-600 rounded-lg py-1.5 font-bold text-[11px] hover:border-[#5FC36C] hover:text-[#5FC36C] transition-colors flex items-center justify-center gap-1"
                             >
                               + Добавить еще
                             </button>
                           </div>
                         ) : (
                           <button 
-                            onClick={(e) => { e.preventDefault(); setSelectedProductForModal(product); }} 
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedProductForModal(product); }} 
                             disabled={product.stock === 0} 
-                            className={`w-full bg-[#5FC36C] text-white rounded-lg font-bold hover:bg-[#4CAF50] disabled:bg-gray-100 disabled:text-gray-400 transition-all shadow-sm flex items-center justify-center gap-1 ${isCompact ? 'py-1.5 text-[11px]' : 'py-2.5 text-sm'}`}
+                            className={`w-full bg-[#5FC36C] text-white rounded-lg font-bold hover:bg-[#4CAF50] disabled:bg-gray-100 dark:disabled:bg-gray-700 disabled:text-gray-400 transition-all shadow-sm flex items-center justify-center gap-1 relative z-20 ${isCompact ? 'py-1.5 text-[11px]' : 'py-2.5 text-sm'}`}
                           >
                             <ShoppingCart className={isCompact ? 'w-3 h-3' : 'w-4 h-4'} />
                             {product.stock > 0 ? 'В корзину' : 'Нет'}
@@ -356,22 +360,22 @@ export default function Shop() {
                         )}
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
           ) : (
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-[2rem] border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500">Фото</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500">Наименование</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500">Бренд</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500">Категория</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500">Остаток</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500 text-right">Цена</th>
-                    <th className="px-6 py-4 font-bold text-sm text-gray-500 text-center">Действия</th>
+                  <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-600">
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400">Фото</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400">Наименование</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400">Бренд</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400">Категория</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400">Остаток</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400 text-right">Цена</th>
+                    <th className="px-6 py-4 font-bold text-sm text-gray-500 dark:text-gray-400 text-center">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,23 +383,23 @@ export default function Shop() {
                     const cartText = getCartItemsText(product.id);
                     const isFav = favorites.includes(product.id);
                     return (
-                      <tr key={product.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                      <tr key={product.id} className="border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                         <td className="px-6 py-4">
                           {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className="w-12 h-16 object-cover rounded-lg border border-gray-100" />
+                            <img src={product.image_url} alt={product.name} className="w-12 h-16 object-cover rounded-lg border border-gray-100 dark:border-gray-600" />
                           ) : (
-                            <div className="w-12 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-[8px] font-bold text-gray-400">Нет</div>
+                            <div className="w-12 h-16 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-[8px] font-bold text-gray-400">Нет</div>
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <Link href={`/product/${product.id}`} className="font-bold text-gray-900 hover:text-[#5FC36C] transition-colors">
+                          <Link href={`/product/${product.id}`} className="font-bold text-gray-900 dark:text-white hover:text-[#5FC36C] transition-colors">
                             {product.name}
                           </Link>
                         </td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-600">{product.brand || '—'}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-600">{product.category || '—'}</td>
-                        <td className="px-6 py-4 text-sm font-bold text-gray-900">{product.stock} шт.</td>
-                        <td className="px-6 py-4 text-right font-black text-lg">{product.price} ₽</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-600 dark:text-gray-400">{product.brand || '—'}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-600 dark:text-gray-400">{product.category || '—'}</td>
+                        <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-white">{product.stock} шт.</td>
+                        <td className="px-6 py-4 text-right font-black text-lg text-gray-900 dark:text-white">{product.price} ₽</td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-3">
                             <button onClick={(e) => toggleFavorite(e, product.id)} className={`p-2 rounded-lg transition-colors ${isFav ? 'text-[#5FC36C]' : 'text-gray-400 hover:text-[#5FC36C]'}`}>
@@ -406,17 +410,17 @@ export default function Shop() {
                               <div className="flex items-center gap-2">
                                 <button 
                                   onClick={() => router.push('/shop/cart')} 
-                                  className="bg-[#E3F2E3] text-[#5FC36C] font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-[#d0ebd0]"
+                                  className="bg-[#E3F2E3] dark:bg-green-900/30 text-[#5FC36C] font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-[#d0ebd0] dark:hover:bg-green-900/50"
                                 >
                                   {cartText} в корзине
                                 </button>
-                                <button onClick={(e) => { e.preventDefault(); handleQuickAdd(product); }} className="bg-white border border-gray-200 text-gray-500 w-8 h-8 flex items-center justify-center rounded-lg hover:border-[#5FC36C] hover:text-[#5FC36C] font-bold">+</button>
+                                <button onClick={(e) => { e.preventDefault(); handleQuickAdd(product); }} className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 w-8 h-8 flex items-center justify-center rounded-lg hover:border-[#5FC36C] hover:text-[#5FC36C] font-bold">+</button>
                               </div>
                             ) : (
                               <button 
                                 onClick={(e) => { e.preventDefault(); setSelectedProductForModal(product); }} 
                                 disabled={product.stock === 0}
-                                className="bg-[#5FC36C] text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-[#4CAF50] disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+                                className="bg-[#5FC36C] text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-[#4CAF50] disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 transition-colors"
                               >
                                 В корзину
                               </button>
@@ -432,10 +436,10 @@ export default function Shop() {
           )}
           
           {filteredProducts.length === 0 && (
-            <div className="bg-white rounded-[2rem] p-16 text-center border border-gray-100 mt-6 shadow-sm flex flex-col items-center justify-center">
-              <Search className="w-12 h-12 text-gray-300 mb-4" />
-              <h3 className="text-xl font-black text-gray-900 mb-2">Ничего не найдено</h3>
-              <p className="text-gray-500 font-medium">Попробуйте изменить параметры поиска или сбросить фильтры.</p>
+            <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-16 text-center border border-gray-100 dark:border-gray-700 mt-6 shadow-sm flex flex-col items-center justify-center transition-colors">
+              <Search className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
+              <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Ничего не найдено</h3>
+              <p className="text-gray-500 dark:text-gray-400 font-medium">Попробуйте изменить параметры поиска или сбросить фильтры.</p>
             </div>
           )}
         </main>

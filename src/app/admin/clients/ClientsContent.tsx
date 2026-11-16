@@ -16,7 +16,6 @@ export default function ClientsContent() {
     let isMounted = true;
 
     async function loadClients() {
-      // Загружаем всех клиентов из organizations
       const { data, error } = await supabase
         .from('organizations')
         .select('*')
@@ -39,24 +38,13 @@ export default function ClientsContent() {
     c.contact_phone?.includes(search)
   );
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-xl font-bold bg-[#F9FAFB]">Загрузка...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-xl font-bold bg-transparent">Загрузка...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F4F9F4] font-sans text-[#1A1A1A] pb-20">
+    <div className="font-sans text-[#1A1A1A] pb-20">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      <header className="bg-white border-b border-[#E3F2E3] sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-extrabold text-[#4CAF50]">Клиенты</h1>
-          <div className="flex gap-4 items-center">
-            <Link href="/admin/my-orgs" className="text-sm font-bold bg-[#F4F9F4] px-4 py-2 rounded-xl hover:bg-[#E3F2E3]">Мои организации</Link>
-            <Link href="/admin" className="text-sm font-bold bg-[#F4F9F4] px-4 py-2 rounded-xl hover:bg-[#E3F2E3]">Заказы</Link>
-            <Link href="/admin/clients" className="text-sm font-bold bg-[#5FC36C] text-white px-4 py-2 rounded-xl shadow-sm">Клиенты</Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 mt-8">
+      <main className="mt-2">
         {/* Поиск */}
         <div className="bg-white rounded-[1.5rem] p-4 mb-6 border border-gray-100 shadow-sm flex items-center gap-3">
           <Search className="w-5 h-5 text-gray-400" />

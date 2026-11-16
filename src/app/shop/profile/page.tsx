@@ -2,38 +2,40 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ShopHeader from '../../../components/ShopHeader';
 import Footer from '../../../components/Footer';
-import Toast from '../../../components/Toast';
-import { User } from 'lucide-react';
+import { User, Phone, FileText, LogOut, Mail } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [clientOrg, setClientOrg] = useState<any>(null);
+  const [org, setOrg] = useState<any>(null);
   const [cartCount, setCartCount] = useState(0);
   const [favoritesCount, setFavoritesCount] = useState(0);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push('/'); return; }
-      
-      const { data: clientData } = await supabase.from('organizations').select('*').eq('user_id', session.user.id).limit(1);
-      if (clientData && clientData.length > 0) {
-        setClientOrg(clientData[0]);
-      }
 
-      const savedCart = localStorage.getItem('pyro_cart');
-      if (savedCart) {
-        const cart = JSON.parse(savedCart);
-        setCartCount(Object.values(cart).reduce((a: number, b: any) => a + Number(b), 0));
-      }
-      const savedFav = localStorage.getItem('pyro_favorites');
-      if (savedFav) setFavoritesCount(JSON.parse(savedFav).length);
+      // Получаем организацию
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .limit(1)
+        .single();
+
+      if (orgData) setOrg(orgData);
+
+      // Счетчики для шапки
+      const { data: cartData } = await supabase.from('cart_items').select('quantity').eq('user_id', session.user.id);
+      if (cartData) setCartCount(cartData.reduce((sum, item) => sum + item.quantity, 0));
+
+      const { data: favData } = await supabase.from('favorites').select('product_id').eq('user_id', session.user.id);
+      if (favData) setFavoritesCount(favData.length);
 
       setLoading(false);
     }
@@ -42,77 +44,72 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.removeItem('userRole');
-    window.location.href = '/';
+    router.push('/');
   };
 
-  if (loading) return <div className="min-h-screen bg-[#F9FAFB]"></div>;
+  if (loading) return <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900"></div>;
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] text-[#1A1A1A] font-sans pb-20">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900 text-[#1A1A1A] dark:text-white font-sans flex flex-col transition-colors duration-300">
+      <ShopHeader cartCount={cartCount} favoritesCount={favoritesCount} clientName={org?.name || 'Клиент'} />
 
-      <ShopHeader 
-        cartCount={cartCount}
-        favoritesCount={favoritesCount} 
-        clientName={clientOrg?.name || 'Профиль'} 
-      />
-      
-      <div className="max-w-2xl mx-auto px-4 mt-8">
-        <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
+      <main className="flex-grow max-w-2xl mx-auto px-6 py-12 w-full">
+        
+        {/* Карточка профиля */}
+        <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-8 md:p-12 shadow-sm border border-gray-100 dark:border-gray-700 text-center transition-colors">
           
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-20 h-20 bg-[#5FC36C] text-white rounded-full flex items-center justify-center text-3xl font-extrabold shadow-md">
-              {clientOrg?.name ? clientOrg.name[0].toUpperCase() : <User className="w-10 h-10" />}
+          {/* Аватар */}
+          <div className="w-24 h-24 bg-[#5FC36C] rounded-full mx-auto flex items-center justify-center text-white text-4xl font-black mb-6 shadow-lg shadow-green-500/20">
+            {org?.name ? org.name.charAt(0).toUpperCase() : 'К'}
+          </div>
+
+          <h1 className="text-3xl font-black mb-1">{org?.name || 'Клиент'}</h1>
+          <p className="text-gray-500 dark:text-gray-400 font-medium mb-8">
+            {org?.entity_type === 'ip' ? 'Индивидуальный предприниматель' : org?.entity_type === 'ooo' ? 'Общество с ограниченной ответственностью' : 'Организация'}
+          </p>
+
+          <div className="space-y-4 text-left max-w-md mx-auto mb-8">
+            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600">
+              <p className="text-xs text-gray-400 dark:text-gray-400 font-bold uppercase mb-1 flex items-center gap-2">
+                <Phone className="w-3 h-3" /> Контактный телефон
+              </p>
+              <p className="font-bold text-lg">{org?.contact_phone || 'Не заполнен'}</p>
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold">{clientOrg?.name || 'Название не заполнено'}</h1>
-              <p className="text-sm text-gray-500">{clientOrg?.entity_type || 'Организация'}</p>
+
+            <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600">
+              <p className="text-xs text-gray-400 dark:text-gray-400 font-bold uppercase mb-1 flex items-center gap-2">
+                <FileText className="w-3 h-3" /> ИНН
+              </p>
+              <p className="font-bold text-lg">{org?.inn || 'Не заполнен'}</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
-              <div>
-                <p className="text-xs text-gray-400 font-bold uppercase mb-1">Контактный телефон</p>
-                <p className="font-bold">{clientOrg?.contact_phone || 'Не заполнен'}</p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
-              <div>
-                <p className="text-xs text-gray-400 font-bold uppercase mb-1">ИНН</p>
-                <p className="font-bold">{clientOrg?.inn || 'Не заполнен'}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 space-y-3">
+          <div className="space-y-3 max-w-md mx-auto">
             <Link 
-              href="/shop/settings" 
-              className="block w-full text-center bg-gray-50 text-[#1A1A1A] py-3 rounded-xl font-bold border-2 border-gray-100 hover:bg-gray-100 transition-colors"
+              href="/shop/settings#requisites"
+              className="block w-full bg-gray-50 dark:bg-gray-700 text-black dark:text-white font-bold py-4 rounded-xl border border-gray-100 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
             >
               Мои реквизиты
             </Link>
+            
             <Link 
-              href="/shop/documents" 
-              className="block w-full text-center bg-gray-50 text-[#1A1A1A] py-3 rounded-xl font-bold border-2 border-gray-100 hover:bg-gray-100 transition-colors"
+              href="/shop/documents"
+              className="block w-full bg-gray-50 dark:bg-gray-700 text-black dark:text-white font-bold py-4 rounded-xl border border-gray-100 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
             >
               Мои документы (Счета)
             </Link>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <button 
-              onClick={handleLogout}
-              className="w-full bg-red-50 text-red-500 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
-            >
-              Выйти из аккаунта
-            </button>
-          </div>
+          <button 
+            onClick={handleLogout}
+            className="mt-8 w-full max-w-md mx-auto bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold py-4 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-5 h-5" /> Выйти из аккаунта
+          </button>
 
         </div>
-      </div>
+      </main>
+      
       <Footer />
     </div>
   );

@@ -27,18 +27,39 @@ export default function OrderDetailsContent() {
   const fetchData = async () => {
     if (!id) return;
     setLoading(true);
+
+    // 1. Загружаем заказ
     const { data: orderData } = await supabase.from('orders').select('*').eq('id', id).single();
     setOrder(orderData);
 
     if (orderData) {
-      const { data: itemsData } = await supabase.from('order_items').select('*, products(name)').eq('order_id', id);
-      setItems(itemsData || []);
+      // 2. Загружаем позиции заказа БЕЗ вложенных запросов (чтобы не было ошибок)
+      const { data: itemsData } = await supabase.from('order_items').select('*').eq('order_id', id);
+      
+      // 3. Загружаем все товары, чтобы вручную сопоставить названия
+      const { data: productsData } = await supabase.from('products').select('id, name');
+      
+      if (itemsData) {
+        // Обогащаем позиции названиями товаров
+        const enrichedItems = itemsData.map(item => {
+          const product = productsData?.find(p => p.id === item.product_id);
+          return {
+            ...item,
+            product_name: product?.name || item.product_name || 'Товар'
+          };
+        });
+        setItems(enrichedItems);
+      }
+
+      // 4. Загружаем клиента по телефону
       const { data: clientData } = await supabase.from('organizations').select('*').eq('contact_phone', orderData.customer_phone).limit(1);
       if (clientData && clientData.length > 0) setClientOrg(clientData[0]);
     }
 
+    // 5. Загружаем реквизиты админской организации
     const { data: adminData } = await supabase.from('admin_organizations').select('*').eq('is_default', true).single();
     setAdminOrg(adminData);
+
     setLoading(false);
   };
 
@@ -68,21 +89,45 @@ export default function OrderDetailsContent() {
     }
   };
 
-  const handleOpenInvoice = () => {
-    if (!clientOrg || !adminOrg || !order) return;
+  const handleOpenInvoice = async () => {
+    if (!clientOrg || !adminOrg || !order) {
+      setToast({ message: 'Не хватает данных для счета (клиент или ваша организация)', type: 'error' });
+      return;
+    }
+
+    // 1. Ищем уже выставленный счет для этого заказа
+    const { data: existingInvoices } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('order_id', order.id)
+      .limit(1);
+
+    let invoiceNumber = `СЧ-${order.id.slice(0, 4)}`;
+    let invoiceDate = new Date(order.created_at).toLocaleDateString('ru-RU');
+    let invoiceTotal = order.total_price;
+
+    if (existingInvoices && existingInvoices.length > 0) {
+      // Используем данные из существующего счета
+      invoiceNumber = existingInvoices[0].invoice_number;
+      invoiceDate = new Date(existingInvoices[0].created_at).toLocaleDateString('ru-RU');
+      invoiceTotal = existingInvoices[0].amount;
+    }
+
+    // 2. Формируем позиции для PDF
     const itemsForPdf = items.map(item => ({
-      name: item.products?.name || 'Товар',
+      name: item.product_name, // Используем обогащенное имя
       quantity: item.quantity,
       price: item.price
     }));
+
     setInvoiceData({
-      invoiceNumber: `СЧ-${order.id.slice(0, 4)}`,
-      date: new Date(order.created_at).toLocaleDateString('ru-RU'),
+      invoiceNumber,
+      date: invoiceDate,
       adminOrg,
       clientOrg,
       items: itemsForPdf,
-      total: order.total_price,
-      totalWords: numberToWords(order.total_price)
+      total: invoiceTotal,
+      totalWords: numberToWords(invoiceTotal)
     });
     setShowInvoiceModal(true);
   };
@@ -93,6 +138,7 @@ export default function OrderDetailsContent() {
   return (
     <div className="min-h-screen bg-[#F9FAFB] text-[#1A1A1A] font-sans pb-20">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      
       {showDeleteModal && (
         <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white p-8 rounded-[2rem] shadow-2xl max-w-sm w-full text-center">
@@ -100,7 +146,7 @@ export default function OrderDetailsContent() {
               <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>
             <h2 className="text-xl font-black mb-2">Удалить заказ?</h2>
-            <p className="text-gray-500 text-sm mb-6">Вы действительно хотите удалить заказ клиента? Это действие нельзя отменить.</p>
+            <p className="text-gray-500 text-sm mb-6">Вы действительно хотите удалить заказ? Это действие нельзя отменить.</p>
             <div className="flex gap-3">
               <button onClick={() => setShowDeleteModal(false)} className="flex-1 bg-gray-100 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">Отмена</button>
               <button onClick={confirmDelete} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-600 transition-colors">Удалить</button>
@@ -111,12 +157,12 @@ export default function OrderDetailsContent() {
 
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/admin" className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black">
+          <Link href="/admin" className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black bg-gray-50 px-4 py-2 rounded-xl transition-colors">
             <ArrowLeft className="w-4 h-4" /> Назад к заказам
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-black">Заказ #{order.id.slice(0, 8)}</h1>
-            <button onClick={fetchData} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200" title="Обновить">
+            <button onClick={fetchData} className="p-2 bg-gray-50 rounded-full hover:bg-gray-200 transition-colors" title="Обновить">
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
@@ -124,31 +170,34 @@ export default function OrderDetailsContent() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 mt-8 space-y-6">
+        
+        {/* Информация о заказе */}
         <div className="bg-white rounded-[1.5rem] p-6 border border-gray-100 shadow-sm">
           <h2 className="text-lg font-black mb-4">Информация о заказе</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-gray-400 font-bold uppercase text-xs mb-1">Клиент</p>
               <p className="font-bold">{order.customer_name}</p>
-              <p>{order.customer_phone}</p>
+              <p className="text-gray-600">{order.customer_phone}</p>
             </div>
             <div>
               <p className="text-gray-400 font-bold uppercase text-xs mb-1">Оплата</p>
-              <p className="font-bold">{order.payment_method}</p>
-              <p className="font-black text-lg mt-1">{order.total_price} ₽</p>
+              <p className="font-bold">{order.payment_method || '—'}</p>
+              <p className="font-black text-lg mt-1 text-[#5FC36C]">{order.total_price} ₽</p>
             </div>
             <div>
               <p className="text-gray-400 font-bold uppercase text-xs mb-1">Доставка</p>
-              <p className="font-bold">{order.delivery_method}</p>
-              <p>{order.delivery_address || '—'}</p>
+              <p className="font-bold">{order.delivery_method || '—'}</p>
+              <p className="text-gray-600">{order.delivery_address || '—'}</p>
             </div>
             <div>
               <p className="text-gray-400 font-bold uppercase text-xs mb-1">Дата</p>
-              <p>{new Date(order.created_at).toLocaleString('ru-RU')}</p>
+              <p className="font-medium">{new Date(order.created_at).toLocaleString('ru-RU')}</p>
             </div>
           </div>
         </div>
 
+        {/* Состав заказа */}
         <div className="bg-white rounded-[1.5rem] p-6 border border-gray-100 shadow-sm">
           <h2 className="text-lg font-black mb-4">Состав заказа</h2>
           <table className="w-full text-left border-collapse">
@@ -162,23 +211,31 @@ export default function OrderDetailsContent() {
             </thead>
             <tbody>
               {items.map(item => (
-                <tr key={item.id} className="border-b border-gray-50 last:border-0">
-                  <td className="py-3 font-medium text-sm">{item.products?.name || 'Товар'}</td>
-                  <td className="py-3 text-center text-sm">{item.quantity}</td>
+                <tr key={item.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                  <td className="py-3 font-medium text-sm">{item.product_name}</td>
+                  <td className="py-3 text-center text-sm">{item.quantity} {item.unit_type === 'piece' ? 'шт.' : item.unit_type === 'pack' ? 'блок.' : 'ящ.'}</td>
                   <td className="py-3 text-right text-sm">{item.price} ₽</td>
                   <td className="py-3 text-right font-bold text-sm">{item.price * item.quantity} ₽</td>
                 </tr>
               ))}
+              {items.length === 0 && (
+                <tr><td colSpan={4} className="py-8 text-center text-gray-500">В заказе нет позиций</td></tr>
+              )}
             </tbody>
           </table>
         </div>
 
+        {/* Управление */}
         <div className="bg-white rounded-[1.5rem] p-6 border border-gray-100 shadow-sm">
           <h2 className="text-lg font-black mb-4">Управление</h2>
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div className="flex items-center gap-3">
-              <label className="font-bold text-sm">Статус:</label>
-              <select value={order.delivery_status || ''} onChange={(e) => updateStatus(e.target.value)} className="bg-[#F3F4F6] border-none rounded-xl px-4 py-2 font-bold text-sm focus:ring-2 focus:ring-[#5FC36C] outline-none">
+              <label className="font-bold text-sm text-gray-600">Статус:</label>
+              <select 
+                value={order.delivery_status || ''} 
+                onChange={(e) => updateStatus(e.target.value)} 
+                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 font-bold text-sm focus:ring-2 focus:ring-[#5FC36C] outline-none cursor-pointer"
+              >
                 <option value="Ожидает оплаты">Ожидает оплаты</option>
                 <option value="На сборке">На сборке</option>
                 <option value="В пути">В пути</option>
@@ -188,10 +245,10 @@ export default function OrderDetailsContent() {
               </select>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleOpenInvoice} className="flex items-center gap-2 bg-[#E3F2E3] text-[#5FC36C] px-4 py-2 rounded-xl font-bold hover:bg-[#d0ebd0] transition-colors">
+              <button onClick={handleOpenInvoice} className="flex items-center gap-2 bg-[#E3F2E3] text-[#5FC36C] px-5 py-2.5 rounded-xl font-bold hover:bg-[#d0ebd0] transition-colors">
                 <FileText className="w-4 h-4" /> Счет
               </button>
-              <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 bg-red-50 text-red-500 px-4 py-2 rounded-xl font-bold hover:bg-red-100 transition-colors">
+              <button onClick={() => setShowDeleteModal(true)} className="flex items-center gap-2 bg-red-50 text-red-500 px-5 py-2.5 rounded-xl font-bold hover:bg-red-100 transition-colors">
                 <Trash2 className="w-4 h-4" /> Удалить
               </button>
             </div>
